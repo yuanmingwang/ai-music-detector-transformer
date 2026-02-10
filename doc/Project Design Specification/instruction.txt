@@ -1,0 +1,22 @@
+Instructions
+
+The first deliverable for the project is a design/requirement specification. As you work on the project you will  expand and update this document until it eventually becomes the final project report. For the design specification and the progress report at the end of February the text will be part of the README.md file in the source code repository for each project. For the final report the text will be copied and formatted as an ISMIR paper using LaTex. 
+
+The design specification should describes the proposed project, provide a timeline with specific objectives, and clearly outline the role of each team member. In addition it should describe the tools, data sets, and associate literature that the group is going to use for the project.  A proper bibliography of 15-20 references should also be provided with an associated Related Work section. You can read more about possible projects in Appendix B of the textbook that is available under the Resources tab.
+
+I expect that the writing of this specification will be an interactive process in which you ask me questions and I provide you with pointers to relevant literature, software and datasets. Groups should ideally be 2-3 students but I will allow up to 4-5 students and will consider solo projects if there is sufficient justification. 
+
+Last but not least: 
+
+Submit the entire README.md file for your project through Brightspace. There should be a subsection with with heading ## FirstName Last that describes 2-3 objectives for you personally. Each objective should have 5 performance indicators that are explicitly labeled as basic, expected advanced. For example 
+
+George Tzanetakis
+ Objective (implement a functional genre classification system for the Music4All dataset) 
+PI1 (basic): load and process the Music4All dataset including audio 
+PI2 (basic): train a Naive Bayes classifier for genre prediction 
+PI3 (expected): compare different classifiers in terms of classification accuracy, show corresponding confusion matrices 
+PI4 (expected): calculated timing stats for training and prediction for each classifier, run different subsets of the dataset to get a better sense of scaling 
+PI5 (advanced) - implement data augmentation by pitch shifting/time stretching and see how it affects training and prediction 
+ 
+
+Due on Feb 10, 2026 11:59 PM
