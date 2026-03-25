@@ -1,0 +1,29 @@
+Instructions
+
+The second deliverable for the project is a progress report. This is an expansion of your design specification and will continue evolving until it eventually becomes the final project report. All the written progress reports should conform to the template used for ISMIR submissions and follow the structure of an academic paper. It is a good idea to read a few ISMIR papers in order to familiarize yourself with both the template and the sections that are typically used. 
+
+ This progress report should be 3-4 pages using the ISMIR template. The project report should provide a snapshot of what the current status of your project is and repeat in document format the information from your github README.md. You should clearly describe your progress in achieving your objectives and report about the status of your performance indicators. Each member of the group needs to write their own individual status report. For full grades you will need to show progress and completion of all your basic and expected performance indicators. 
+
+Ideally by this point you should have some working code, some example outputs, and some initial results. It is highly likely that your original time-line has been revised and you have different or new milestones. So in addition to describing what you have done you can also talk about what you plan to do for the remainder of the class with your project. You can also comment on what you have learned including things you tried and did not work out. At this point you will also need to provide goals for the final project at three levels: basic (something that you will be able to show even if there are problems and delays), expected (what you realistically plan to get done), and advanced (if everything goes smoothly and you can stretch your goals). 
+
+A proper bibliography of 15-20 references should also be provided with an associated Related Work section. You can read more about possible projects in Appendix B of the textbook that is available under the Resources tab. 
+
+ The ISMIR templates can be found at: 
+
+https://ismir2024.ismir.net/cfp/
+
+Recent examples of ISMIR papers can be found at: 
+
+ https://ismir2024.ismir.net/papers/
+
+EVERY PERSON NEEDS TO SUBMIT THE REPORT FROM EACH GROUP. THE REPORT SHOULD BE A SINGLE PDF FILE (NO OTHER FORMATS WILL BE ACCEPTED) 
+
+GRADING:
+
+2 - completion of basic objectives and performance indicators 
+2 - completion of expected objectvies and performance indicators 
+1 - bibliography 
+3 - writing, style, organization 
+2 - figures, tables, math equations 
+
+Due on Mar 18, 2026 11:59 PM
