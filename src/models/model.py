@@ -1,4 +1,5 @@
 from src.models.spectttra import SpecTTTra
+from src.models.local_window_transformer import LocalWindowTransformer
 from src.models.vit import ViT
 from src.layers.feature import FeatureExtractor
 from src.layers.augment import AugmentLayer
@@ -70,6 +71,29 @@ class AudioClassifier(nn.Module):
                 attn_drop_rate=getattr(cfg.model, "attn_drop_rate", 0.0),
                 proj_drop_rate=getattr(cfg.model, "proj_drop_rate", 0.0),
                 mlp_ratio=getattr(cfg.model, "mlp_ratio", 4.0),
+            )
+        elif cfg.model.name == "LocalWindowTransformer":
+            model = LocalWindowTransformer(
+                input_spec_dim=cfg.model.input_shape[0],
+                input_temp_dim=cfg.model.input_shape[1],
+                embed_dim=cfg.model.embed_dim,
+                t_clip=cfg.model.t_clip,
+                f_clip=cfg.model.f_clip,
+                num_heads=cfg.model.num_heads,
+                num_layers=cfg.model.num_layers,
+                pre_norm=cfg.model.pre_norm,
+                pe_learnable=cfg.model.pe_learnable,
+                pos_drop_rate=getattr(cfg.model, "pos_drop_rate", 0.0),
+                attn_drop_rate=getattr(cfg.model, "attn_drop_rate", 0.0),
+                proj_drop_rate=getattr(cfg.model, "proj_drop_rate", 0.0),
+                mlp_ratio=getattr(cfg.model, "mlp_ratio", 4.0),
+                local_window_size=getattr(cfg.model, "local_window_size", None),
+                local_num_windows=getattr(cfg.model, "local_num_windows", 4),
+                local_t_clip=getattr(cfg.model, "local_t_clip", None),
+                local_f_clip=getattr(cfg.model, "local_f_clip", None),
+                local_num_heads=getattr(cfg.model, "local_num_heads", None),
+                local_num_layers=getattr(cfg.model, "local_num_layers", None),
+                fusion_drop_rate=getattr(cfg.model, "fusion_drop_rate", 0.2),
             )
         elif cfg.model.name == "ViT":
             model = ViT(
