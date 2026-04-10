@@ -1,270 +1,718 @@
-# **Design Specification: Multi‑Layer AI‑Generated Music Detection System**
+# AI Music Detector Transformer
 
-## **1\. Project Overview**
+This repository contains a PyTorch training and evaluation pipeline for **detecting AI-generated music from audio**. It treats the task as a binary classification problem:
 
-Recent advances in generative audio models—such as Suno, Udio, MusicGen, and diffusion‑based systems—have made AI‑generated music increasingly realistic and difficult to distinguish from human‑composed works. Traditional detectors often rely on a single feature domain (e.g., spectral fingerprints, codec artifacts, or short‑window CNN classification), which makes them brittle, easy to evade, and poorly generalizable to unseen generators.
+- `0` = real / human-made song
+- `1` = fake / AI-generated song
 
-This project proposes a **multi‑layer, multi‑modal detection system** that integrates:
+The code works on raw audio files, converts them into mel spectrograms, and trains a classifier using one of several backbones:
 
-* **Spectral artifact analysis** (checkerboard patterns, periodic peaks, codec fingerprints)  
-* **Temporal coherence modeling** (melodic continuity, structural segmentation, long‑range dependencies)  
-* **Timbral and production‑level cues** (mixing/mastering inconsistencies, unnatural transients, FX artifacts)  
-* **Micro‑signal anomaly detection** (upsampling artifacts, periodicity from transposed convolutions)  
-* **Section‑level attribution** (intro, verse, chorus, bridge, instrumental break)
+- `SpecTTTra`
+- `ViT`
+- `timm-convnext_tiny`
+- `timm-efficientvit_b2`
 
-The system will operate at two levels:
+The project is structured for experiments on datasets similar to **SONICS**, where metadata CSVs describe real and fake songs and the training scripts build train/validation/test splits from those files.
 
-### **Track‑level detection**
+## What This Project Does
 
-A global classifier determines whether the entire track is AI‑generated.
+At a high level, the pipeline is:
 
-### **Section‑level attribution**
+1. Load waveform audio from `.mp3` files.
+2. Crop or pad each clip to a fixed duration such as 5 seconds or 120 seconds.
+3. Convert the waveform into a mel spectrogram.
+4. Apply optional spectrogram-level augmentation during training.
+5. Feed the spectrogram into a classifier backbone.
+6. Train with binary supervision and report detection metrics.
 
-A segmentation‑aware model identifies *which parts* of the track exhibit the strongest AI signatures, enabling:
+This repo is focused on **audio-only classification**, not lyrics-based or multimodal detection.
 
-* Explainability  
-* Partial‑fake detection  
-* Forensic analysis  
-* Model‑agnostic generalization
+### End-to-End Code Path
 
-This design draws inspiration from recent breakthroughs in AI‑music detection, Fourier‑domain artifact analysis, segment‑transformer architectures, and multi‑generator datasets.
+The core inference/training path is implemented through these functions and classes:
 
----
+1. [`AudioDataset.__getitem__()`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/utils/dataset.py)
+   - Loads an `.mp3` file with `librosa.load(...)`
+   - Optionally trims the front using `skip_time`
+   - Calls `crop_or_pad(...)` to force a fixed waveform length
+   - Returns a tensor named `audio`
 
-## **2\. System Architecture (High‑Level)**
+2. [`FeatureExtractor.forward()`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/layers/feature.py)
+   - Receives the waveform tensor
+   - Calls `self.audio2melspec(...)`, where `self.audio2melspec` is a `torchaudio.transforms.MelSpectrogram`
+   - Calls `self.amplitude_to_db(...)`, where `self.amplitude_to_db` is a `torchaudio.transforms.AmplitudeToDB`
+   - Applies the configured normalization
+   - Returns the mel spectrogram tensor
 
-### **2.1 Multi‑Layer Detection Pipeline**
+3. [`AudioClassifier.forward()`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/models/model.py)
+   - Calls `self.ft_extractor(audio)` to convert waveform to mel spectrogram
+   - Optionally applies augmentation with `self.augment(...)`
+   - Adds a channel dimension with `unsqueeze(1)`
+   - Resizes the spectrogram with `torch.nn.functional.interpolate(...)`
+   - Sends the spectrogram into the selected backbone with `self.encoder(spec)`
+   - Passes the extracted features into the final linear layer `self.classifier(...)`
+   - Returns the prediction logits
 
-1. **Preprocessing & Segmentation**
+So in short, the spectrogram is created by `FeatureExtractor.forward()`, and it is fed into the classifier by `AudioClassifier.forward()`.
 
-   * Beat tracking, downbeat detection  
-   * 4‑bar segmentation (following Segment Transformer literature)  
-   * Multi‑resolution STFTs (short/medium/long windows)  
-2. **Feature Extraction**
+## Methods
 
-   * **Spectral fingerprints** (Fourier peaks, periodic summation artifacts)  
-   * **Melody/harmony embeddings** (MERT, Music2Vec, wav2vec‑style SSL models)  
-   * **Timbral embeddings** (FXEncoder, spectral centroid/bandwidth, HNR)  
-   * **Structural similarity matrices** (self‑similarity matrices, recurrence plots)  
-3. **Modeling**
+### Input Representation
 
-   * **Segment‑level classifier** (AudioCAT‑style cross‑attention encoder)  
-   * **Full‑track structural model** (Segment Transformer or Fusion Segment Transformer)  
-   * **Ensemble fusion** (late fusion of spectral, temporal, and timbral predictions)  
-4. **Section‑Level Attribution**
+The model does not consume precomputed features from disk. Instead, it computes them on the fly:
 
-   * Attention heatmaps  
-   * Local anomaly scores  
-   * Structural discontinuity detection  
-   * Fourier‑domain artifact localization  
-5. **Output**
+- Input audio is loaded from the file path listed in the split CSV.
+- Audio is resampled/handled according to the config.
+- A mel spectrogram is created using `torchaudio.transforms.MelSpectrogram`.
+- The spectrogram is converted to decibel scale with `AmplitudeToDB`.
+- One of several normalization modes is applied:
+  - `mean_std`
+  - `min_max`
+  - `simple`
+  - or no normalization
 
-   * Binary classification (AI vs. human)  
-   * Section‑level AI probability timeline  
-   * Explanation report (spectral peaks, structural anomalies, timbral inconsistencies)
+The feature extraction logic lives in [`src/layers/feature.py`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/layers/feature.py).
 
----
+### How MP3 Audio Becomes a Mel Spectrogram
 
-## **3\. Project Timeline**
+The conversion from `.mp3` audio to mel spectrogram happens in two stages.
 
-### **Week 1–2: Literature Review & Dataset Assembly**
+First, the audio file is loaded in [`AudioDataset.__getitem__()`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/utils/dataset.py):
 
-* Review 15–20 papers (provided in Related Work)  
-* Collect datasets: M6, SONICS, FakeMusicCaps, FMA, GTZAN, COSIAN  
-* Build pipeline for downloading/processing Suno/Udio samples (if allowed)
+- `librosa.load(self.filepaths[idx], sr=None)` reads the `.mp3` file into a waveform array
+- `crop_or_pad(...)` makes the waveform exactly `cfg.audio.max_len` samples long
+- optional normalization is applied to the waveform before it is converted to a tensor
 
-### **Week 3–4: Preprocessing & Feature Extraction**
+Second, the waveform tensor is transformed into a mel spectrogram in [`FeatureExtractor.forward()`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/layers/feature.py):
 
-* Implement beat/downbeat tracking  
-* Implement multi‑resolution STFT extraction  
-* Extract SSL embeddings (MERT, Music2Vec, wav2vec2)  
-* Extract Fourier‑domain artifact fingerprints
+- `self.audio2melspec(x.float())`
+  - this is the actual mel spectrogram step
+  - `self.audio2melspec` is created in `FeatureExtractor.__init__()` as `MelSpectrogram(...)`
+- `self.amplitude_to_db(melspec)`
+  - converts the mel power spectrogram into a log-like decibel representation
+- `self.normalizer(melspec)`
+  - applies the configured normalization method
 
-### **Week 5–6: Segment‑Level Classifier**
+The `MelSpectrogram(...)` parameters are controlled by the config file:
 
-* Implement AudioCAT‑style cross‑attention model  
-* Train on FakeMusicCaps \+ SONICS short‑segment data  
-* Evaluate robustness to pitch‑shift, time‑stretch, codec compression
+- `n_fft`
+- `hop_length`
+- `win_length`
+- `n_mels`
+- `sample_rate`
+- `f_min`
+- `f_max`
+- `power`
 
-### **Week 7–8: Full‑Track Structural Model**
+These values come from the `melspec` and `audio` sections of the YAML config.
 
-* Implement Segment Transformer or Fusion Segment Transformer  
-* Train on SONICS full‑track data  
-* Integrate structural similarity matrices
+### How the Mel Spectrogram Is Fed Into the Classifier
 
-### **Week 9–10: Section‑Level Attribution**
+This happens in [`AudioClassifier.forward()`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/models/model.py).
 
-* Implement attention‑based localization  
-* Implement Fourier‑peak localization  
-* Build visualization tools (heatmaps, timelines)
+The sequence is:
 
-### **Week 11–12: Fusion & Final System**
+1. `spec = self.ft_extractor(audio)`
+   - calls `FeatureExtractor.forward()`
+   - output shape is roughly `(batch_size, n_mels, n_frames)`
 
-* Combine spectral, temporal, and timbral models  
-* Evaluate on M6 out‑of‑distribution generators  
-* Write final report \+ prepare demo
+2. `spec, y = self.augment(spec, y)` during training
+   - applies spectrogram augmentation when the model is in training mode
 
----
+3. `spec = spec.unsqueeze(1)`
+   - adds the channel dimension expected by image-style backbones
+   - shape becomes `(batch_size, 1, n_mels, n_frames)`
 
-## **4\. Tools & Technologies**
+4. `spec = F.interpolate(spec, size=tuple(self.input_shape), mode="bilinear")`
+   - resizes the spectrogram to the configured model input size
 
-### **Programming & Frameworks**
+5. `features = self.encoder(spec)`
+   - this is the step where the mel spectrogram is actually fed into the backbone model
+   - `self.encoder` is created by `AudioClassifier.get_encoder(...)`
+   - depending on the config, it will be `SpecTTTra`, `ViT`, or a `timm` model
 
-* Python  
-* PyTorch  
-* Librosa/Essentia  
-* Scikit-learn  
-* Jupyter Notebooks
+6. `preds = self.classifier(embeds)`
+   - the backbone output is pooled if needed
+   - a final `nn.Linear(...)` layer maps features to the binary output logit
 
-### **Feature Representations**
+So the exact function that feeds the mel spectrogram into the classifier backbone is:
 
-* CLAP (Contrastive Language–Audio Pretraining) embeddings as the primary representation, following Cros Vila et al. (2025)  
-* Essentia low-level and mid-level descriptors (spectral centroid, loudness, BPM, harmonic features) for complementary analysis and ablation studies
+- [`AudioClassifier.forward()`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/models/model.py)
 
-### **Models and Classifiers**
+and the exact line of logic is conceptually:
 
-* Classical ML classifiers operating on embeddings:  
-  * Support Vector Machines (SVM)  
-  * Random Forests  
-  * k-Nearest Neighbors (k-NN)  
-* Segment Transformer（Kim et al.）  
-* Fusion Segment Transformer（Kim et al. 2026）  
-* CNN / RNN / CRNN Models  
-* SHAP, LIME, Grad‑CAM on spectrograms (explain models)
+```python
+features = self.encoder(spec)
+preds = self.classifier(embeds)
+```
 
-### **Audio Transformations & Robustness Testing**
+### Augmentation
 
-* Resampling (e.g., 48 kHz → 22.05 kHz)  
-* Low-pass and high-pass filtering  
-* Pitch-shifting and time-stretching
+During training, the code can apply spectrogram augmentation such as:
 
-### **Datasets**
+- mixup
+- time masking
+- frequency masking
 
-* **M6** (multi‑generator, multi‑genre, multi‑lingual)  
-* **SONICS** (Suno/Udio full‑track dataset)  
-* **FakeMusicCaps** (short‑segment TTM dataset)  
-* **FMA** (real music baseline)  
-* **GTZAN** (genre diversity)  
-* **COSIAN** (Japanese vocal music)  
-* **Musical Instrument Sound Dataset** (instrument‑level analysis)  
-* **Million Song Dataset (MSD)** or FMA as non-AI baselines
+These are controlled by the `augment` section in the config YAML files.
 
-### **Visualization & Analysis**
+### Supported Model Backbones
 
-* UMAP for embedding visualization  
-* Confusion matrices, precision/recall/F1  
-* Feature importance analysis for classical models
+The main model wrapper is in [`src/models/model.py`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/models/model.py). It supports three families of backbones:
 
----
+- `SpecTTTra`
+  - A spectro-temporal transformer-style architecture designed for this task.
+  - Variants are controlled through config parameters such as `f_clip`, `t_clip`, `embed_dim`, `num_heads`, and `num_layers`.
 
-## **5\. Related Work**
+- `ViT`
+  - A Vision Transformer adapted to single-channel spectrogram inputs.
 
-Research on AI‑generated music detection has accelerated rapidly in response to the emergence of high‑fidelity generative audio models such as Suno, Udio, MusicGen, and diffusion‑based systems. Early work in this area focused primarily on **audio deepfake detection** and **speech spoofing** (e.g., Wu et al., 2017; Zang et al., 2024), but recent studies have begun to address the unique challenges posed by **full‑length musical content**, which exhibits richer structure, broader timbral variation, and more complex production pipelines than speech.
+- `timm-*`
+  - Any supported timm image backbone can be used as a spectrogram classifier.
+  - This repo currently provides configs for:
+    - ConvNeXt Tiny
+    - EfficientViT B2
 
-## **5.1.  Artifact‑Based Detection and Neural Codec Fingerprints**
+### Training Objective
 
-A major line of work investigates spectral artifacts introduced by neural audio decoders. Afchar et al. (2024, 2025\) demonstrate that modern music generators—especially those using transposed convolutions or neural codecs such as Encodec and DAC—produce periodic spectral peaks, checkerboard patterns, and upsampling artifacts that can be exploited for detection. Their Fourier‑domain analysis shows that these artifacts arise from architectural constraints rather than training data, making them stable and model‑specific fingerprints. Simple linear models trained on averaged spectral fingerprints can achieve \>99% accuracy on known generators, though generalization to unseen models remains limited.
+The code currently supports:
 
-These findings align with earlier observations in image and speech deepfake detection, where convolutional upsampling leaves detectable periodicities. However, Afchar et al. also highlight that such detectors are fragile: minor manipulations such as pitch‑shifting, re‑encoding, or adding noise can collapse accuracy to near zero. This motivates detection systems that go beyond low‑level spectral cues.
+- `BCEWithLogitsLoss`
+- `SigmoidFocalLoss`
 
-## **5.2. Structural and Temporal Modeling of Music**
+Training quality is tracked with:
 
-Music differs from speech in its long‑range temporal dependencies, hierarchical structure, and repeated motifs. Several works propose modeling these properties for AI‑music detection.
+- balanced accuracy
+- F1 score
+- sensitivity
+- specificity
 
-Rahman et al. (2025) introduce SpecTTTra, a spectro‑temporal transformer that tokenizes both time and frequency axes to capture long‑range dependencies. Their SONICS dataset—containing tens of thousands of Suno/Udio tracks—demonstrates that long‑context models outperform short‑window CNNs, especially for full‑length songs. However, SpecTTTra still struggles with unseen generators and is sensitive to distribution shifts.
+The primary metric used to choose the best checkpoint is controlled by `logger.primary_metric` in the config.
 
-Kim & Go (2025, 2026\) propose the Segment Transformer, which segments music into beat‑aligned units (e.g., 4‑bar chunks) and models inter‑segment relationships using self‑similarity matrices. This approach explicitly incorporates musical form, enabling detection of structural inconsistencies typical of AI‑generated music (e.g., unnatural repetition, lack of developmental arcs). Their two‑stage system—segment‑level feature extraction followed by structural modeling—achieves state‑of‑the‑art results on SONICS and AIME datasets.
+## Repository Structure
 
-These works collectively show that temporal coherence and structural segmentation are crucial for robust detection, especially as spectral artifacts become less reliable.
+```text
+ai-music-detector-transformer/
++-- configs/                 # Experiment configs
++-- dataset/                 # Metadata CSVs and audio folders
++-- output/                  # Checkpoints, predictions, logs, profiles
++-- scripts/                 # Helper scripts for data download/prep
++-- src/                     # Models, layers, utilities
++-- model_profile.py         # FLOPs / params / speed profiling
++-- split_data.py            # Build train.csv, valid.csv, test.csv
++-- test.py                  # Evaluation script
++-- train.py                 # Training script
++-- README_SONIC.md          # Upstream/reference README
+```
 
-## **5.3. Timbral, Mixing, and Production‑Level Cues**
+## Installation
 
-Beyond spectral fingerprints, several studies explore production‑level anomalies in AI‑generated music. FXEncoder‑based systems (Kim & Go, 2025\) analyze mixing/mastering characteristics such as dynamic range, transient behavior, and effect‑chain consistency, which differ between human‑engineered tracks and AI‑generated ones. Similarly, Li et al. (2024, 2025\) show that MGM (machine‑generated music) often exhibits unnatural harmonic‑to‑noise ratios, spectral bandwidth distributions, and instrumental balance, which can be used as discriminative features.
+### Recommended Environment
 
-These approaches highlight that AI models often fail to replicate the nuanced, nonlinear workflows of human audio engineers—an underexplored but promising detection dimension.
+This project is intended for Python 3 and PyTorch. A GPU is strongly recommended for training, especially for long-context runs such as 120-second clips.
 
-## **5.4. Micro‑Signal and Low‑Level Anomaly Detection**
+### Create a Virtual Environment
 
-Several papers emphasize micro‑signal irregularities introduced by generative models:
+On Windows PowerShell:
 
-* periodic aliasing from transposed convolutions (Afchar et al., 2025\)  
-* unnatural zero‑crossing patterns (Li et al., 2024\)  
-* inconsistencies in onset autocorrelation and transient sharpness (Cros Vila & Sturm, 2025\)  
-* codec‑specific reconstruction artifacts (Afchar et al., 2024\)
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
 
-These micro‑artifacts are often invisible to human listeners but detectable through high‑resolution spectral or temporal analysis. However, they are also the easiest for future models to eliminate, making them insufficient as a standalone detection strategy.
+On Linux/macOS:
 
-## **5.5. Lyrics‑Based and Multimodal Detection**
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-Frohmann et al. (2025) propose a complementary approach: detecting AI‑generated songs via lyrics transcripts. Using Whisper for transcription and LLM‑based text encoders (e.g., LLM2Vec), they show that lyric‑style features generalize better across audio manipulations and unseen generators than audio‑only detectors. This suggests that multimodal detection—combining audio, lyrics, metadata, and structural cues—may be necessary for long‑term robustness.
+### Main Dependencies
 
-## **5.6. Symbolic and MIDI‑Based Detection**
+The repo depends on:
 
-Several works focus on symbolic music:
+- PyTorch
+- torchaudio
+- librosa
+- pandas
+- scikit-learn
+- tqdm
+- timm
+- fvcore
 
-* Tantra & Wicaksana (2025) use LSTM/CNN models to detect AI‑generated classical MIDI compositions.  
-* Dervakos et al. (2021) propose music‑theoretic heuristics (tonal networks, harmonic span, structural coherence) to evaluate generative models.  
-* Cros Vila & Sturm (2023–2025) develop statistical and geometric representations (e.g., cosine contours, corpus‑level distance metrics) to compare symbolic melodies.
+See [`requirements.txt`](d:/GitHub/Project/Python/ai-music-detector-transformer/requirements.txt) for the exact package list.
 
-These studies show that symbolic representations reveal melodic continuity, harmonic logic, and structural development—areas where AI systems still struggle.
+## Data
 
-## **5.7. Dataset Development and Benchmarking**
+### Expected Dataset Format
 
-Multiple papers contribute datasets and benchmarks:
+This code expects a dataset folder with:
 
-* **SONICS** (Rahman et al., 2025): large‑scale Suno/Udio dataset with structured prompts.  
-* **M6** (Li et al., 2024): multi‑generator, multi‑genre, multi‑lingual dataset for robust MGMD.  
-* **FakeMusicCaps** (Li et al., 2024): text‑conditioned music generation paired with human descriptions.  
-* **Cros Vila et al. (2025)**: “in‑the‑wild” Suno/Udio dataset scraped from public feeds.
+- a metadata file for real songs
+- a metadata file for fake songs
+- an audio folder for real songs
+- an audio folder for fake songs
 
-These datasets reveal a consistent pattern: detectors perform extremely well on seen generators, but generalization to unseen models or manipulated audio remains a major challenge.
+Expected layout:
 
-## **5.8. Explainability and Human‑Centered Perspectives**
+```text
+dataset/
+├── real_songs.csv
+├── fake_songs.csv
+├── real_songs/
+│   ├── song_a.mp3
+│   ├── song_b.mp3
+│   └── ...
+└── fake_songs/
+    ├── fake_a.mp3
+    ├── fake_b.mp3
+    └── ...
+```
 
-Finally, Cros Vila & Sturm (2025) argue that explainability in AI‑music detection must be treated as a communication problem, not merely a technical one. They show that common XAI tools (e.g., LIME, SHAP, Grad‑CAM) often misalign with human interpretations of musical structure, leading to misleading explanations. This highlights the need for **music‑aware XAI** that can attribute decisions to meaningful musical concepts (e.g., timbre, structure, harmony).
+The generated split files used by the training code are written at the repository root:
 
----
+- `train.csv`
+- `valid.csv`
+- `test.csv`
 
-## **6\. Bibliography (15–20 References)**
+### Metadata Requirements
 
-1. **D. Afchar, G. Meseguer-Brocal, and R. Hennequin**, “Detecting music deepfakes is easy but actually hard,” *arXiv preprint arXiv:2405.04181*, 2024\.  
-2. **D. Afchar, G. Meseguer-Brocal, and R. Hennequin**, “AI-Generated Music Detection and its Challenges,” in *ICASSP 2025–2025 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)*, 2025, pp. 1–5.  
-3. **D. Afchar, G. Meseguer-Brocal, K. Akesbi, and R. Hennequin**, “A Fourier Explanation of AI-music Artifacts,” *arXiv preprint arXiv:2506.19108*, 2025\.  
-4. **L. Cros Vila**, *Perspectives on AI and Music: Representation, Detection, and Explanation in the Age of AI-Generated Music*, Ph.D. dissertation, KTH Royal Institute of Technology, 2025\.  
-5. **L. Cros Vila, B. Sturm, L. Casini, and D. Dalmazzo**, “The AI Music Arms Race: On the Detection of AI-Generated Music,” *Trans. Int. Soc. Music Inf. Retrieval*, vol. 8, no. 1, pp. 179–194, 2025\.  
-6. **E. Dervakos, G. Filandrianos, and G. Stamou**, “Heuristics for evaluation of AI generated music,” in *2020 25th International Conference on Pattern Recognition (ICPR)*, 2021, pp. 9164–9171.  
-7. **N. Fišer, M. Á. Martín-Pascual, and C. Andreu-Sánchez**, “Emotional impact of AI-generated vs. human-composed music in audiovisual media: A biometric and self-report study,” *PLOS One*, vol. 20, no. 6, p. e0326498, 2025\.  
-8. **M. Frohmann, E. V. Epure, G. Meseguer-Brocal, M. Schedl, and R. Hennequin**, “AI-Generated Song Detection via Lyrics Transcripts,” *arXiv preprint arXiv:2506.18488*, 2025\.  
-9. **Y. Kim and S. Go**, “Segment Transformer: AI-Generated Music Detection via Music Structural Analysis,” in *2025 Asia Pacific Signal and Information Processing Association Annual Summit and Conference (APSIPA ASC)*, 2025, pp. 664–669.  
-10. **Y. Kim and S. Go**, “Fusion Segment Transformer: Bi-Directional Attention Guided Fusion Network for AI-Generated Music Detection,” *arXiv preprint arXiv:2601.13647*, 2026\.  
-11. **Y. Li, M. Milling, L. Specia, and B. W. Schuller**, “From Audio Deepfake Detection to AI-Generated Music Detection—A Pathway and Overview,” *arXiv preprint arXiv:2412.00571*, 2024\.  
-12. **Y. Li, Q. Sun, H. Li, L. Specia, and B. W. Schuller**, “Detecting Machine-Generated Music with Explainability—A Challenge and Early Benchmarks,” *arXiv preprint arXiv:2412.13421*, 2024\.  
-13. **Y. Li, H. Li, L. Specia, and B. W. Schuller**, “M6: Multi-generator, Multi-domain, Multi-lingual and cultural, Multi-genres, Multi-instrument Machine-Generated Music Detection Databases,” *arXiv preprint arXiv:2412.06001*, 2024\.  
-14. **M. I. Tantra and A. Wicaksana**, “LSTM and CNN-Based Detection of AI-Generated Classical Music From MIDI Features,” *Informatica*, vol. 49, no. 7, 2025\.  
-15. **J. Wie, N. Salim, A. A. S. Gunawan, and R. C. Pradana**, “Detecting AI-Generated Music: A Comparative Analysis of Deep Learning Models,” in *2025 Tenth International Conference on Informatics and Computing (ICIC)*, 2025, pp. 1–6.  
-16. **L. Cros Vila, B. L. T. Sturm, L. Casini, and D. Dalmazzo**, “The AI Music Arms Race: On the Detection of AI-Generated Music,” Trans. Int. Soc. Music Inf. Retrieval, vol. 8, no. 1, pp. 179–194, 2025\.
+The training and split-generation code assumes the metadata CSVs include at least these columns:
 
----
+- `filename`
+  - Stem of the audio filename without `.mp3`
+- `split`
+  - One of `train`, `valid`, or `test`
+- `duration`
+  - Song duration in seconds
+- `no_vocal`
+  - Boolean-like field used by the split script filter
 
-# **7\. Team Member Objectives**
+The training/evaluation pipeline also expects the final split CSVs to contain:
 
-## **Suchang**
+- `filepath`
+- `target`
 
-### **Objective 1: Implement the Spectral‑Artifact Detection Module**
+If `cfg.audio.skip_time` is enabled, the split CSV also needs:
 
-* **PI1 (basic):** Compute multi‑resolution STFTs and extract amplitude/phase spectra  
-* **PI2 (basic):** Implement Fourier‑peak detection and periodic summation analysis  
-* **PI3 (expected):** Reproduce Afchar et al.’s Fourier artifact fingerprints on multiple generators  
-* **PI4 (expected):** Build a classifier using spectral fingerprints \+ SSL embeddings  
-* **PI5 (advanced):** Develop a generator‑agnostic artifact detector robust to pitch‑shift, noise, and codec compression
+- `skip_time`
 
-**Yuanming**
+### How to Get the Data
 
-### **Objective 2: Build the Section‑Level Attribution System**
+This repo does not automatically download the full dataset for you. The intended workflow is:
 
-* **PI1 (basic):** Implement beat-synchronous segmentation and extract CLAP embeddings for individual song sections.  
-* **PI2 (basic):** Compute self‑similarity matrices for each track  
-* **PI3 (expected):** Train a Segment Transformer for section‑level detection  
-* **PI4 (expected):** Visualize section-level predictions using timelines and confusion matrices.  
-* **PI5 (advanced):** Analyze whether section-level detection correlates with musical structure or with non-musical artifacts (e.g., sampling rate, spectral bandwidth).
+1. Obtain metadata and audio from your chosen source.
+2. Place the files into the expected `dataset/` structure.
+3. Generate `train.csv`, `valid.csv`, and `test.csv`.
+4. Point your config to those split CSVs.
 
+If you are working from a SONICS-style setup, [`README_SONIC.md`](d:/GitHub/Project/Python/ai-music-detector-transformer/README_SONIC.md) is the best reference for the original dataset sources and expected metadata fields.
+
+In practice, you need:
+
+- `dataset/real_songs.csv`
+- `dataset/fake_songs.csv`
+- actual `.mp3` files under `dataset/real_songs/`
+- actual `.mp3` files under `dataset/fake_songs/`
+
+The split-generation script only keeps rows whose audio files actually exist on disk.
+
+## Generating Train/Validation/Test Splits
+
+Use [`split_data.py`](d:/GitHub/Project/Python/ai-music-detector-transformer/split_data.py) to build the CSV files that `train.py` and `test.py` consume.
+
+### Full Usable Dataset
+
+```bash
+python split_data.py
+```
+
+### Limited Subset for Quick Experiments
+
+```bash
+python split_data.py --limit 100
+```
+
+This keeps up to:
+
+- the first 100 usable real songs
+- the first 100 usable fake songs
+
+according to the metadata row order.
+
+### Custom Dataset Directory
+
+```bash
+python split_data.py --data-dir ./dataset --limit 500
+```
+
+### What the Split Script Filters
+
+The script:
+
+1. Reads `real_songs.csv` and `fake_songs.csv`.
+2. Checks whether the referenced `.mp3` files actually exist.
+3. Filters rows using:
+   - `duration >= 30`
+   - `no_vocal == False`
+4. Adds:
+   - `filepath`
+   - `target`
+5. Splits rows using the existing `split` column.
+6. Saves:
+   - `train.csv`
+   - `valid.csv`
+   - `test.csv`
+
+## Configuration
+
+All experiments are driven by YAML config files under [`configs/`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs).
+
+Examples:
+
+- [`configs/convnext-5s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/convnext-5s.yaml)
+- [`configs/convnext-120s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/convnext-120s.yaml)
+- [`configs/efficientvit-5s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/efficientvit-5s.yaml)
+- [`configs/efficientvit-120s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/efficientvit-120s.yaml)
+- [`configs/vit-5s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/vit-5s.yaml)
+- [`configs/vit-120s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/vit-120s.yaml)
+- [`configs/spectttra_f1t3-5s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/spectttra_f1t3-5s.yaml)
+- [`configs/spectttra_f1t3-120s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/spectttra_f1t3-120s.yaml)
+
+### Important Config Sections
+
+#### `experiment_name`
+
+Used to create the output folder:
+
+```text
+output/<experiment_name>/
+```
+
+#### `dataset`
+
+Defines the CSVs to use:
+
+```yaml
+dataset:
+  train_dataframe: "train.csv"
+  valid_dataframe: "valid.csv"
+  test_dataframe: "test.csv"
+```
+
+#### `audio`
+
+Controls waveform length and clip sampling:
+
+- `sample_rate`
+- `max_time`
+- `random_sampling`
+- `normalize`
+- `skip_time`
+
+`max_time` is converted internally into `audio.max_len`.
+
+#### `melspec`
+
+Controls spectrogram generation:
+
+- `n_fft`
+- `hop_length`
+- `win_length`
+- `n_mels`
+- `f_min`
+- `f_max`
+- `power`
+- `top_db`
+- `norm`
+
+#### `model`
+
+Defines the backbone and its hyperparameters.
+
+Examples:
+
+```yaml
+model:
+  name: "SpecTTTra"
+```
+
+```yaml
+model:
+  name: "ViT"
+```
+
+```yaml
+model:
+  name: "timm-convnext_tiny"
+```
+
+#### `training` and `validation`
+
+Controls:
+
+- batch size
+- number of epochs
+
+#### `optimizer`
+
+Controls:
+
+- optimizer type
+- weight decay
+- gradient accumulation
+- gradient clipping
+
+#### `scheduler`
+
+Controls:
+
+- scheduler type
+- learning rate
+- warmup
+- minimum LR
+
+#### `loss`
+
+Selects the training objective.
+
+#### `logger.primary_metric`
+
+Determines which validation metric chooses the best checkpoint:
+
+- `f1`
+- `acc`
+- `sens`
+- `spec`
+
+## How to Run Training
+
+### Example
+
+```bash
+python train.py --config ./configs/convnext-5s.yaml
+```
+
+### What Training Does
+
+The training script:
+
+1. Loads the config.
+2. Builds the output directory.
+3. Loads train/validation/test CSVs.
+4. Builds dataloaders.
+5. Creates the model, optimizer, scheduler, and loss.
+6. Trains for the configured number of epochs.
+7. Selects the best checkpoint using the configured primary metric.
+8. Evaluates the best checkpoint on the test set.
+9. Saves predictions and checkpoints.
+
+### Distributed Training
+
+If multiple CUDA devices are visible, `train.py` will automatically enable distributed training using `torch.multiprocessing.spawn`.
+
+### Resume Training
+
+To resume from a checkpoint, set:
+
+```yaml
+model:
+  resume: "output/<experiment_name>/last_checkpoint.pth"
+```
+
+Then run the same training command again.
+
+## How to Run Evaluation
+
+Use [`test.py`](d:/GitHub/Project/Python/ai-music-detector-transformer/test.py) to evaluate a saved checkpoint.
+
+```bash
+python test.py --config ./configs/convnext-5s.yaml --ckpt_path ./output/convnext-t=5/best_checkpoint.pth
+```
+
+This script:
+
+- loads the test CSV
+- loads the checkpoint
+- runs inference
+- prints summary metrics
+- saves per-example predictions
+
+## How to Profile a Model
+
+Use [`model_profile.py`](d:/GitHub/Project/Python/ai-music-detector-transformer/model_profile.py) to estimate profile information such as parameter count and compute.
+
+```bash
+python model_profile.py --config ./configs/convnext-5s.yaml --batch_size 12
+```
+
+Profile output is saved to:
+
+```text
+output/<experiment_name>/model_profile.csv
+```
+
+## Outputs
+
+Each experiment writes outputs under:
+
+```text
+output/<experiment_name>/
+```
+
+Typical files include:
+
+- `best_checkpoint.pth`
+- `last_checkpoint.pth`
+- `valid_predictions.csv`
+- `test_predictions.csv`
+- `model_profile.csv`
+- `logs/train-YYYYMMDD-HHMMSS.txt`
+
+### Training Logs
+
+Each training run now saves a text log file under:
+
+```text
+output/<experiment_name>/logs/
+```
+
+The log captures the same console output you see during training, including:
+
+- config printout
+- epoch progress
+- checkpoint updates
+- validation/test summaries
+- total training time
+
+## Metrics
+
+The code reports the following metrics:
+
+- `loss`
+- `acc`
+  - balanced accuracy
+- `f1`
+- `sens`
+  - sensitivity / recall for the fake class
+- `spec`
+  - specificity / recall for the real class
+
+The best checkpoint is chosen using `logger.primary_metric`.
+
+## Available Experiment Presets
+
+The repo currently includes presets for:
+
+- 5-second clips
+- 120-second clips
+
+and for multiple backbones:
+
+- ConvNeXt
+- EfficientViT
+- ViT
+- SpecTTTra alpha
+- SpecTTTra beta
+- SpecTTTra gamma
+
+The different SpecTTTra variants mostly differ in tokenization/window settings such as `f_clip` and `t_clip`.
+
+## Example Workflow
+
+### 1. Prepare data
+
+Put your metadata and audio files under:
+
+```text
+dataset/
+```
+
+### 2. Build split CSVs
+
+```bash
+python split_data.py --limit 100
+```
+
+### 3. Train a model
+
+```bash
+python train.py --config ./configs/convnext-5s.yaml
+```
+
+### 4. Evaluate the best checkpoint
+
+```bash
+python test.py --config ./configs/convnext-5s.yaml --ckpt_path ./output/convnext-t=5/best_checkpoint.pth
+```
+
+### 5. Inspect outputs
+
+Check:
+
+- checkpoints in `output/convnext-t=5/`
+- predictions in `output/convnext-t=5/`
+- logs in `output/convnext-t=5/logs/`
+
+## Notes and Practical Tips
+
+### Clip Duration Matters
+
+The configs include both short-context and long-context settings:
+
+- `5s` configs are useful for quick iteration and lower memory usage.
+- `120s` configs are much heavier but can capture more long-range musical context.
+
+### Dataset CSVs Must Match Reality
+
+The split script discards rows whose `.mp3` files do not exist. If you expected more training examples than you see in `train.csv`, check that:
+
+- filenames in metadata match filenames on disk
+- the files are really under `dataset/real_songs/` or `dataset/fake_songs/`
+- the rows satisfy the duration and `no_vocal` filters
+
+### `skip_time`
+
+If your CSV includes a `skip_time` column and you enable `audio.skip_time`, the loader will trim that many seconds from the beginning before cropping the audio clip.
+
+## Troubleshooting
+
+### Training is very slow
+
+Possible reasons:
+
+- you are running on CPU
+- clip duration is too long
+- batch size is too large for your hardware
+- your audio files are stored on a slow disk
+
+Try:
+
+- using a 5-second config first
+- lowering batch size
+- reducing `num_workers` if dataloading becomes unstable
+
+### Out of memory
+
+Try:
+
+- smaller batch size
+- a 5-second config instead of 120-second
+- a lighter backbone
+- mixed precision enabled in the config
+
+### No samples appear in split CSVs
+
+Check:
+
+- metadata file paths
+- `filename` values
+- `.mp3` file existence
+- `split` column contents
+- `duration` and `no_vocal` filters
+
+## Reference
+
+[`README_SONIC.md`](d:/GitHub/Project/Python/ai-music-detector-transformer/README_SONIC.md) is included as an upstream/reference document for the original SONICS project and dataset context. This `README.md` is intended to document the codebase in this repository as it currently exists.
