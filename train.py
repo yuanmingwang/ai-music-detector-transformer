@@ -104,6 +104,13 @@ def train_loop(
     for i, batch in enumerate(progress_bar):
         x, y = batch["audio"], batch["target"]
         x, y = x.to(device), y.to(device)
+
+        if i == 0:
+            print(f"model device: {next(model.parameters()).device}")
+            print(f"x device: {x.device}")
+            print(f"y device: {y.device}")
+            print(f"cuda allocated: {torch.cuda.memory_allocated(device) / 1024**2:.2f} MB")
+            
         if cfg.environment.mixed_precision:
             with autocast("cuda") if torch_amp_new else autocast():
                 preds, y = model(x, y)
@@ -257,6 +264,21 @@ def main():
     cfg.environment.world_size = torch.cuda.device_count()
     cfg.environment.distributed = cfg.environment.world_size > 1
     cfg.environment.dist_backend = "nccl" if cfg.environment.distributed else None
+
+    print("-----------------------------")
+    print(f"torch version: {torch.__version__}")
+    print(f"torch CUDA build: {torch.version.cuda}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+    print(f"CUDA device count: {torch.cuda.device_count()}")
+    print(f"Distributed: {cfg.environment.distributed}")
+
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            print(f"Device {i}: {torch.cuda.get_device_name(i)}")
+    else:
+        print("No CUDA device visible to PyTorch")
+
+    print("-----------------------------")
 
     # Start training
     if cfg.environment.distributed:
