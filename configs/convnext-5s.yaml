@@ -7,7 +7,7 @@ logger:
 environment:
   seed: 42
   mixed_precision: true
-  num_workers: 4
+  num_workers: 8
 
 dataset:
   train_dataframe: "train.csv"
@@ -45,11 +45,11 @@ loss:
 num_classes: 1  # Adjust based on your classification task
 
 training:
-  batch_size: 16
+  batch_size: 32
   epochs: 5
 
 validation:
-  batch_size: 16
+  batch_size: 32
     
 optimizer:
   opt: "adamw"
