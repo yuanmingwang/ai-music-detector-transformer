@@ -8,6 +8,7 @@ This repository contains a PyTorch training and evaluation pipeline for **detect
 The code works on raw audio files, converts them into mel spectrograms, and trains a classifier using one of several backbones:
 
 - `SpecTTTra`
+- `LocalWindowTransformer`
 - `ViT`
 - `timm-convnext_tiny`
 - `timm-efficientvit_b2`
@@ -129,7 +130,7 @@ The sequence is:
 5. `features = self.encoder(spec)`
    - this is the step where the mel spectrogram is actually fed into the backbone model
    - `self.encoder` is created by `AudioClassifier.get_encoder(...)`
-   - depending on the config, it will be `SpecTTTra`, `ViT`, or a `timm` model
+  - depending on the config, it will be `SpecTTTra`, `LocalWindowTransformer`, `ViT`, or a `timm` model
 
 6. `preds = self.classifier(embeds)`
    - the backbone output is pooled if needed
@@ -163,6 +164,11 @@ The main model wrapper is in [`src/models/model.py`](d:/GitHub/Project/Python/ai
 - `SpecTTTra`
   - A spectro-temporal transformer-style architecture designed for this task.
   - Variants are controlled through config parameters such as `f_clip`, `t_clip`, `embed_dim`, `num_heads`, and `num_layers`.
+
+- `LocalWindowTransformer`
+  - A local-window transformer that slices several short time windows from the mel spectrogram and encodes them with a shared-weight `SpecTTTra` backbone.
+  - It is useful when you want the model to focus on short-range local artifacts while still training through the same `train.py` pipeline and classifier wrapper.
+  - Important config parameters include `local_window_size`, `local_num_windows`, `local_t_clip`, `local_f_clip`, `local_num_heads`, and `local_num_layers`.
 
 - `ViT`
   - A Vision Transformer adapted to single-channel spectrogram inputs.
@@ -380,6 +386,8 @@ Examples:
 - [`configs/vit-120s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/vit-120s.yaml)
 - [`configs/spectttra_f1t3-5s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/spectttra_f1t3-5s.yaml)
 - [`configs/spectttra_f1t3-120s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/spectttra_f1t3-120s.yaml)
+- [`configs/local_window_transformer_f1t3-5s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/local_window_transformer_f1t3-5s.yaml)
+- [`configs/local_window_transformer_f1t3-120s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/local_window_transformer_f1t3-120s.yaml)
 
 ### Important Config Sections
 
@@ -437,6 +445,11 @@ Examples:
 ```yaml
 model:
   name: "SpecTTTra"
+```
+
+```yaml
+model:
+  name: "LocalWindowTransformer"
 ```
 
 ```yaml
@@ -614,11 +627,13 @@ and for multiple backbones:
 - ConvNeXt
 - EfficientViT
 - ViT
+- LocalWindowTransformer alpha
 - SpecTTTra alpha
 - SpecTTTra beta
 - SpecTTTra gamma
 
 The different SpecTTTra variants mostly differ in tokenization/window settings such as `f_clip` and `t_clip`.
+The LocalWindowTransformer presets reuse the same style of settings, but add local-window controls such as `local_window_size` and `local_num_windows`.
 
 ## Example Workflow
 
