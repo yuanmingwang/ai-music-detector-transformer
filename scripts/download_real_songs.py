@@ -2,11 +2,11 @@
 """
 download_real_songs.py
 
-Download all real-song MP3 files for the SONICS dataset using the YouTube IDs
+Download all real-song MP3 files for the dataset using the YouTube IDs
 stored in dataset/real_songs.csv.
 
 This script is designed to be robust for very large downloads:
-1. It saves files into dataset/real_songs/ to match the SONICS README.
+1. It saves files into dataset/real_songs/
 2. It uses a persistent yt-dlp download archive, so already completed songs
    are not downloaded again.
 3. It keeps a JSONL log of successes and failures.
@@ -27,6 +27,9 @@ Optional usage:
     python download_real_songs.py --start-index 5000
     python download_real_songs.py --sleep 2.0
     python download_real_songs.py --cookies-from-browser chrome
+
+Resume from row 40082 with a short delay between downloads:
+    python scripts/download_real_songs.py --start-index 40082 --sleep 1.5
 
 Notes:
 - ffmpeg is required by yt-dlp for audio extraction/conversion to mp3.
@@ -95,7 +98,7 @@ def expected_output_path(row: Dict[str, str], out_dir: Path) -> Path:
     """
     Decide the final target path for one song.
 
-    The SONICS metadata contains a 'filename' column for the real song file name.
+    The metadata contains a 'filename' column for the real song file name.
     If that value exists, we use it directly. Otherwise we fall back to '<id>.mp3'.
 
     This is safer than always naming by YouTube ID because the dataset metadata
@@ -325,12 +328,12 @@ def parse_args() -> argparse.Namespace:
     """
     Parse command-line arguments.
 
-    Defaults are chosen to match the SONICS repo layout described in the README:
+    Defaults are chosen to match the repo layout described in the README:
     - metadata CSV at dataset/real_songs.csv
     - output directory at dataset/real_songs/
     """
     parser = argparse.ArgumentParser(
-        description="Download SONICS real songs from YouTube using youtube_id in real_songs.csv"
+        description="Download real songs from YouTube using youtube_id in real_songs.csv"
     )
 
     parser.add_argument(
@@ -440,7 +443,7 @@ def main() -> int:
         rows = rows[: args.limit]
 
     print("============================================================")
-    print("SONICS real-song downloader")
+    print("real-song downloader")
     print("============================================================")
     print(f"CSV file:         {csv_path}")
     print(f"Output folder:    {out_dir}")
