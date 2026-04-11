@@ -1,4 +1,5 @@
 from src.models.spectttra import SpecTTTra
+from src.models.artifact_branch import ArtifactBranch
 from src.models.local_window_transformer import LocalWindowTransformer
 from src.models.vit import ViT
 from src.layers.feature import FeatureExtractor
@@ -94,6 +95,16 @@ class AudioClassifier(nn.Module):
                 local_num_heads=getattr(cfg.model, "local_num_heads", None),
                 local_num_layers=getattr(cfg.model, "local_num_layers", None),
                 fusion_drop_rate=getattr(cfg.model, "fusion_drop_rate", 0.2),
+            )
+        elif cfg.model.name == "ArtifactBranch":
+            model = ArtifactBranch(
+                input_spec_dim=cfg.model.input_shape[0],
+                input_temp_dim=cfg.model.input_shape[1],
+                embed_dim=cfg.model.embed_dim,
+                artifact_channels=tuple(
+                    getattr(cfg.model, "artifact_channels", [32, 64, 128, 192])
+                ),
+                proj_drop_rate=getattr(cfg.model, "proj_drop_rate", 0.1),
             )
         elif cfg.model.name == "ViT":
             model = ViT(
