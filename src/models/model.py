@@ -1,6 +1,7 @@
 from src.models.spectttra import SpecTTTra
 from src.models.artifact_branch import ArtifactBranch
 from src.models.local_window_transformer import LocalWindowTransformer
+from src.models.timbre_production_branch import TimbreProductionBranch
 from src.models.vit import ViT
 from src.layers.feature import FeatureExtractor
 from src.layers.augment import AugmentLayer
@@ -104,6 +105,20 @@ class AudioClassifier(nn.Module):
                 artifact_channels=tuple(
                     getattr(cfg.model, "artifact_channels", [32, 64, 128, 192])
                 ),
+                proj_drop_rate=getattr(cfg.model, "proj_drop_rate", 0.1),
+            )
+        elif cfg.model.name == "TimbreProductionBranch":
+            model = TimbreProductionBranch(
+                input_spec_dim=cfg.model.input_shape[0],
+                input_temp_dim=cfg.model.input_shape[1],
+                embed_dim=cfg.model.embed_dim,
+                segment_frames=getattr(cfg.model, "segment_frames", None),
+                timbre_embed_dim=getattr(cfg.model, "timbre_embed_dim", 32),
+                descriptor_hidden_dim=getattr(
+                    cfg.model, "descriptor_hidden_dim", 128
+                ),
+                gru_hidden_dim=getattr(cfg.model, "gru_hidden_dim", 128),
+                gru_layers=getattr(cfg.model, "gru_layers", 2),
                 proj_drop_rate=getattr(cfg.model, "proj_drop_rate", 0.1),
             )
         elif cfg.model.name == "ViT":

@@ -9,6 +9,7 @@ The code works on raw audio files, converts them into mel spectrograms, and trai
 
 - `SpecTTTra`
 - `ArtifactBranch`
+- `TimbreProductionBranch`
 - `LocalWindowTransformer`
 - `ViT`
 - `timm-convnext_tiny`
@@ -131,7 +132,7 @@ The sequence is:
 5. `features = self.encoder(spec)`
    - this is the step where the mel spectrogram is actually fed into the backbone model
    - `self.encoder` is created by `AudioClassifier.get_encoder(...)`
-  - depending on the config, it will be `SpecTTTra`, `ArtifactBranch`, `LocalWindowTransformer`, `ViT`, or a `timm` model
+  - depending on the config, it will be `SpecTTTra`, `ArtifactBranch`, `TimbreProductionBranch`, `LocalWindowTransformer`, `ViT`, or a `timm` model
 
 6. `preds = self.classifier(embeds)`
    - the backbone output is pooled if needed
@@ -160,7 +161,7 @@ These are controlled by the `augment` section in the config YAML files.
 
 ### Supported Model Backbones
 
-The main model wrapper is in [`src/models/model.py`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/models/model.py). It supports three families of backbones:
+The main model wrapper is in [`src/models/model.py`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/models/model.py). It supports several backbone families:
 
 - `SpecTTTra`
   - A spectro-temporal transformer-style architecture designed for this task.
@@ -181,6 +182,12 @@ The main model wrapper is in [`src/models/model.py`](d:/GitHub/Project/Python/ai
   - A compact CNN branch deliberately narrow and focuses on artifact-sensitive evidence. The purpose is to detect subtle periodic peaks, high-frequency inconsistencies.
   - It derives artifact-sensitive maps from the input spectrogram, including high-frequency emphasis, local peak maps, temporal deltas, and multi-resolution views.
   - Important config parameters include `artifact_channels`, `embed_dim`, and `proj_drop_rate`.
+
+- `TimbreProductionBranch`
+  - A lightweight descriptor-sequence branch based on the timbre and production encoder.
+  - It computes segment-level descriptors such as spectral centroid, bandwidth, rolloff, RMS variability, onset density, transient sharpness, and a simple harmonic-to-noise proxy directly from the mel spectrogram.
+  - Those descriptors are combined with a compact learned timbre embedding per segment and modeled with a small BiGRU.
+  - Important config parameters include `segment_frames`, `timbre_embed_dim`, `descriptor_hidden_dim`, `gru_hidden_dim`, and `gru_layers`.
 
 - `LocalWindowTransformer`
   - A local-window transformer that slices several short time windows from the mel spectrogram and encodes them with a shared-weight `SpecTTTra` backbone.
@@ -396,6 +403,8 @@ Examples:
 - [`configs/spectttra_f1t3-120s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/spectttra_f1t3-120s.yaml)
 - [`configs/artifact_branch-5s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/artifact_branch-5s.yaml)
 - [`configs/artifact_branch-120s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/artifact_branch-120s.yaml)
+- [`configs/timbre_production_branch-5s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/timbre_production_branch-5s.yaml)
+- [`configs/timbre_production_branch-120s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/timbre_production_branch-120s.yaml)
 - [`configs/local_window_transformer_f1t3-5s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/local_window_transformer_f1t3-5s.yaml)
 - [`configs/local_window_transformer_f1t3-120s.yaml`](d:/GitHub/Project/Python/ai-music-detector-transformer/configs/local_window_transformer_f1t3-120s.yaml)
 
@@ -460,6 +469,11 @@ model:
 ```yaml
 model:
   name: "ArtifactBranch"
+```
+
+```yaml
+model:
+  name: "TimbreProductionBranch"
 ```
 
 ```yaml
@@ -643,6 +657,7 @@ and for multiple backbones:
 - EfficientViT
 - ViT
 - ArtifactBranch
+- TimbreProductionBranch
 - LocalWindowTransformer alpha
 - SpecTTTra alpha
 - SpecTTTra beta
