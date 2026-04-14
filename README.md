@@ -219,11 +219,9 @@ ai-music-detector-transformer/
 +-- output/                  # Checkpoints, predictions, logs, profiles
 +-- scripts/                 # Helper scripts for data download/prep
 +-- src/                     # Models, layers, utilities
-+-- model_profile.py         # FLOPs / params / speed profiling
 +-- split_data.py            # Build train.csv, valid.csv, test.csv
 +-- test.py                  # Evaluation script
 +-- train.py                 # Training script
-+-- README_SONIC.md          # Upstream/reference README
 ```
 
 ## Installation
@@ -328,8 +326,6 @@ This repo does not automatically download the full dataset for you. The intended
 2. Place the files into the expected `dataset/` structure.
 3. Generate `train.csv`, `valid.csv`, and `test.csv`.
 4. Point your config to those split CSVs.
-
-If you are working from a SONICS-style setup, [`README_SONIC.md`](d:/GitHub/Project/Python/ai-music-detector-transformer/README_SONIC.md) is the best reference for the original dataset sources and expected metadata fields.
 
 In practice, you need:
 
@@ -761,4 +757,4 @@ Check:
 
 ## Reference
 
-[`README_SONIC.md`](d:/GitHub/Project/Python/ai-music-detector-transformer/README_SONIC.md) is included as an upstream/reference document for the original SONICS project and dataset context. This `README.md` is intended to document the codebase in this repository as it currently exists.
+SONICS project
