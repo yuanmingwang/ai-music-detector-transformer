@@ -62,7 +62,7 @@ So in short, the spectrogram is created by `FeatureExtractor.forward()`, and it 
 
 ### Input Representation
 
-The model does not consume precomputed features from disk. Instead, it computes them on the fly:
+By default, the model computes features on the fly:
 
 - Input audio is loaded from the file path listed in the split CSV.
 - Audio is resampled/handled according to the config.
@@ -75,6 +75,8 @@ The model does not consume precomputed features from disk. Instead, it computes 
   - or no normalization
 
 The feature extraction logic lives in [`src/layers/feature.py`](d:/GitHub/Project/Python/ai-music-detector-transformer/src/layers/feature.py).
+
+If you enable the optional `precomputed` config section, the pipeline can instead load cached mel spectrogram tensors from disk and skip waveform loading plus mel conversion during training and evaluation.
 
 ### How MP3 Audio Becomes a Mel Spectrogram
 
@@ -455,6 +457,25 @@ Controls spectrogram generation:
 - `top_db`
 - `norm`
 
+#### `precomputed`
+
+Optional cache settings for pre-generated mel spectrogram tensors:
+
+- `enabled`
+- `cache_dir`
+- `num_train_views`
+
+Example:
+
+```yaml
+precomputed:
+  enabled: true
+  cache_dir: "dataset/precomputed_mels"
+  num_train_views: 4
+```
+
+`num_train_views` lets you store several random training crops per song when `audio.random_sampling: true`. Validation and test use a single deterministic cached view.
+
 #### `model`
 
 Defines the backbone and its hyperparameters.
@@ -536,6 +557,30 @@ Determines which validation metric chooses the best checkpoint:
 ```bash
 python train.py --config ./configs/convnext-5s.yaml
 ```
+
+### Optional Precompute Step
+
+If you want training to reuse cached mel spectrograms instead of rebuilding them every run:
+
+```bash
+python precompute_features.py --config ./configs/convnext-5s.yaml --splits train valid test
+python train.py --config ./configs/convnext-5s.yaml
+```
+
+Add this to your config before training:
+
+```yaml
+precomputed:
+  enabled: true
+  cache_dir: "dataset/precomputed_mels"
+  num_train_views: 4
+```
+
+Notes:
+
+- If `precomputed.enabled` is `false` or missing, the original on-the-fly audio pipeline is still used.
+- If `audio.random_sampling` is enabled, caching only one view per training clip removes the current per-epoch random crop behavior.
+- Caching multiple train views is a good compromise when you want faster training without collapsing training-time crop diversity to a single fixed segment.
 
 ### What Training Does
 

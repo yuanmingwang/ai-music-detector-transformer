@@ -79,3 +79,8 @@ augment:
   n_freq_masks: 1
   freq_mask_param: 8
   time_freq_mask_p: 0.5
+
+precomputed:
+  enabled: true
+  cache_dir: "dataset/precomputed_mels"
+  num_train_views: 4

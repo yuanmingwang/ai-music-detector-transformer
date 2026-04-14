@@ -22,6 +22,7 @@ from src.utils.config import dict2cfg
 from src.utils.dataset import get_dataloader
 from src.utils.metrics import get_part_result
 from src.utils.losses import BCEWithLogitsLoss, SigmoidFocalLoss
+from src.utils.precomputed import get_precomputed_cfg
 from src.utils.seed import set_seed, worker_init_fn
 
 # Import the valid_loop function from the training script
@@ -65,6 +66,7 @@ def main():
 
     # Load test data
     test_df = pd.read_csv(cfg.dataset.test_dataframe)
+    precomputed_cfg = get_precomputed_cfg(cfg)
 
     # Shuffle test data
     test_df = test_df.sample(frac=1.0, random_state=cfg.environment.seed).reset_index(
@@ -90,6 +92,10 @@ def main():
         worker_init_fn=worker_init_fn,
         collate_fn=None,
         distributed=False,
+        cfg=cfg,
+        use_precomputed=precomputed_cfg.enabled,
+        precomputed_cache_dir=precomputed_cfg.cache_dir,
+        precomputed_num_views=1,
     )
 
     # Load model

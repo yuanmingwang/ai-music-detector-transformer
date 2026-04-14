@@ -43,6 +43,9 @@ class AudioClassifier(nn.Module):
         self.model_name = cfg.model.name
         self.input_shape = cfg.model.input_shape
         self.num_classes = cfg.num_classes
+        self.use_precomputed = bool(
+            getattr(getattr(cfg, "precomputed", None), "enabled", False)
+        )
         self.ft_extractor = FeatureExtractor(cfg)
         self.augment = AugmentLayer(cfg)
         self.encoder = self.get_encoder(cfg)
@@ -148,7 +151,11 @@ class AudioClassifier(nn.Module):
         return model
 
     def forward(self, audio, y=None):
-        spec = self.ft_extractor(audio)  # shape: (batch_size, n_mels, n_frames)
+        spec = audio if self.use_precomputed else self.ft_extractor(audio)
+        if spec.ndim != 3:
+            raise ValueError(
+                f"Expected a 3D tensor shaped (batch, n_mels, n_frames). Got {spec.shape}."
+            )
         if self.training:
             spec, y = self.augment(spec, y)
         spec = spec.unsqueeze(1)  # shape: (batch_size, 1, n_mels, n_frames)

@@ -43,6 +43,7 @@ from src.utils.metrics import (
 )
 from src.utils.losses import BCEWithLogitsLoss, SigmoidFocalLoss
 from src.utils.perf import profile_model
+from src.utils.precomputed import get_precomputed_cfg
 
 # from src.utils.scheduler import get_cosine_schedule_with_warmup, get_scheduler
 from src.utils.seed import set_seed, worker_init_fn
@@ -328,6 +329,7 @@ def main_worker(gpu, cfg):
         train_df = pd.read_csv(cfg.dataset.train_dataframe)
         valid_df = pd.read_csv(cfg.dataset.valid_dataframe)
         test_df = pd.read_csv(cfg.dataset.test_dataframe)
+        precomputed_cfg = get_precomputed_cfg(cfg)
 
         # Shuffle data
         train_df = train_df.sample(frac=1.0, random_state=cfg.environment.seed).reset_index(
@@ -367,6 +369,12 @@ def main_worker(gpu, cfg):
             worker_init_fn=worker_init_fn,
             collate_fn=None,
             distributed=cfg.environment.distributed,
+            cfg=cfg,
+            use_precomputed=precomputed_cfg.enabled,
+            precomputed_cache_dir=precomputed_cfg.cache_dir,
+            precomputed_num_views=(
+                precomputed_cfg.num_train_views if cfg.audio.random_sampling else 1
+            ),
         )
         valid_dataloader = get_dataloader(
             valid_df.filepath.tolist(),
@@ -381,6 +389,10 @@ def main_worker(gpu, cfg):
             worker_init_fn=worker_init_fn,
             collate_fn=None,
             distributed=cfg.environment.distributed,
+            cfg=cfg,
+            use_precomputed=precomputed_cfg.enabled,
+            precomputed_cache_dir=precomputed_cfg.cache_dir,
+            precomputed_num_views=1,
         )
         test_dataloader = get_dataloader(
             test_df.filepath.tolist(),
@@ -395,6 +407,10 @@ def main_worker(gpu, cfg):
             worker_init_fn=worker_init_fn,
             collate_fn=None,
             distributed=cfg.environment.distributed,
+            cfg=cfg,
+            use_precomputed=precomputed_cfg.enabled,
+            precomputed_cache_dir=precomputed_cfg.cache_dir,
+            precomputed_num_views=1,
         )
 
         # Load model
@@ -404,9 +420,18 @@ def main_worker(gpu, cfg):
         # Profile model
         if cfg.environment.gpu == 0:
             print("\n> Model Profile:")
-            input_tensor = torch.randn((cfg.training.batch_size, cfg.audio.max_len)).to(
-                device
-            )
+            if precomputed_cfg.enabled:
+                with torch.no_grad():
+                    input_shape = model.ft_extractor(
+                        torch.zeros((1, cfg.audio.max_len), device=device)
+                    ).shape[1:]
+                input_tensor = torch.randn(
+                    (cfg.training.batch_size, *input_shape), device=device
+                )
+            else:
+                input_tensor = torch.randn(
+                    (cfg.training.batch_size, cfg.audio.max_len), device=device
+                )
             profile_df = profile_model(model, input_tensor, display=True)
 
         # Distributed Model
