@@ -126,3 +126,5 @@ dmypy.json
 # dataset
 dataset/fake_songs
 dataset/real_songs
+.DS_Store
+src/.DS_Store
