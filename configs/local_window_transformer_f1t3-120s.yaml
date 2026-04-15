@@ -63,11 +63,11 @@ loss:
 num_classes: 1
 
 training:
-  batch_size: 128
-  epochs: 50
+  batch_size: 16
+  epochs: 5
 
 validation:
-  batch_size: 128
+  batch_size: 16
 
 optimizer:
   opt: "adamw"
