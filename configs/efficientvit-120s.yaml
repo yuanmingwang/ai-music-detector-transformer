@@ -44,11 +44,11 @@ loss:
 num_classes: 1  # Adjust based on your classification task
 
 training:
-  batch_size: 32
-  epochs: 50
+  batch_size: 16
+  epochs: 5
 
 validation:
-  batch_size: 32
+  batch_size: 16
     
 optimizer:
   opt: "adamw"
